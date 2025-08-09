@@ -20,12 +20,6 @@ The application allows users to:
 
 ## ⚙️ Installation
 
-Of course! Here are the updated installation instructions with the new steps for the Python backend.
-
----
-
-## ⚙️ Installation
-
 1.  **Clone the repository:**
     ```bash
     git clone https://github.com/lengoctuong/fund-analyzing-app.git
