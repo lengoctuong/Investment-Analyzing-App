@@ -1,0 +1,30 @@
+{
+  "name": "fund-performance-analyzer---v1",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:dev-react\" \"npm:dev-server\"",
+    "dev-react": "vite",
+    "dev-server": "nodemon --watch services --ext ts --exec \"node --loader ts-node/esm services/server.ts\"",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^3.1.0",
+    "yahoo-finance2": "^2.13.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.0",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
