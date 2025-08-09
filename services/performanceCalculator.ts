@@ -46,7 +46,6 @@ export const calculatePerformanceMetrics = (
   groupBy: 'year' | 'month',
   riskFreeRate: number = 0.0
 ): { [key: string]: PerformanceMetrics } => {
-  console.log(assetData)
   if (assetData.length < 2) return {};
 
   const calculateDailyReturns = (data: TimeSeriesData[]): DailyReturn[] => {
@@ -159,7 +158,9 @@ export const calculatePerformanceMetrics = (
   };
   
   for (const period in groupedByPeriod) {
-    periodMetrics[period] = calcMetricsForGroup(groupedByPeriod[period].values, groupedByPeriod[period].returns);
+    if (groupedByPeriod[period].values.length > 1) {
+        periodMetrics[period] = calcMetricsForGroup(groupedByPeriod[period].values, groupedByPeriod[period].returns);
+    }
   }
   
   periodMetrics['All'] = calcMetricsForGroup(assetData, combinedReturns);

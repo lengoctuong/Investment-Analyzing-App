@@ -1,5 +1,8 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -18,12 +21,9 @@ export default defineConfig(({ mode }) => {
       proxy: {
         // Khi FE gọi /api thì Vite sẽ proxy qua ngrok
         '/api': {
-          target: 'https://0a91ee523914.ngrok-free.app',
+          target: 'http://localhost:3001/',
           changeOrigin: true,
           secure: false,
-          headers: {
-            'ngrok-skip-browser-warning': 'true'
-          }
         }
       }
     }

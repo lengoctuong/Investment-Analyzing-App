@@ -11,11 +11,13 @@ interface DashboardProps {
   performanceData: ProcessedMetrics[];
   overallMetrics: ProcessedMetrics[];
   groupBy: 'year' | 'month';
+  assetName: string;
+  benchmarkName: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ performanceData, overallMetrics, groupBy }) => {
-  const fundOverall = overallMetrics.find(m => m.asset === 'Asset');
-  const benchmarkOverall = overallMetrics.find(m => m.asset === 'Benchmark');
+const Dashboard: React.FC<DashboardProps> = ({ performanceData, overallMetrics, groupBy, assetName, benchmarkName }) => {
+  const fundOverall = overallMetrics.find(m => m.asset === assetName);
+  const benchmarkOverall = overallMetrics.find(m => m.asset === benchmarkName);
 
   const periods = [...new Set(performanceData.filter(d => d.year !== 'All').map(d => d.year))].sort((a,b) => a.localeCompare(b));
   const lastNPeriods = periods.slice(groupBy === 'year' ? -10 : -36);
@@ -26,7 +28,7 @@ const Dashboard: React.FC<DashboardProps> = ({ performanceData, overallMetrics, 
       <h2 className="text-3xl font-bold text-text-primary tracking-tight">Performance Overview</h2>
       
       <div>
-        <h3 className="text-xl font-semibold text-text-primary mb-4">Asset</h3>
+        <h3 className="text-xl font-semibold text-text-primary mb-4">{assetName}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <h4 className="text-text-secondary text-sm font-medium">Total Return</h4>
@@ -56,7 +58,7 @@ const Dashboard: React.FC<DashboardProps> = ({ performanceData, overallMetrics, 
       </div>
       
       <div>
-        <h3 className="text-xl font-semibold text-text-primary mb-4 mt-6">Benchmark</h3>
+        <h3 className="text-xl font-semibold text-text-primary mb-4 mt-6">{benchmarkName}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <h4 className="text-text-secondary text-sm font-medium">Total Return</h4>
@@ -102,13 +104,13 @@ const Dashboard: React.FC<DashboardProps> = ({ performanceData, overallMetrics, 
         </Card>
         <Card>
           <h3 className="text-lg font-semibold text-text-primary mb-4">Beta by {groupBy === 'year' ? 'Year' : 'Month'}</h3>
-          <BetaChart data={chartData} />
+          <BetaChart data={chartData} assetName={assetName} />
         </Card>
       </div>
 
       <Card>
         <h3 className="text-lg font-semibold text-text-primary mb-4">Detailed Metrics</h3>
-        <MetricsTable data={performanceData} />
+        <MetricsTable data={performanceData} assetName={assetName} benchmarkName={benchmarkName} />
       </Card>
     </div>
   );

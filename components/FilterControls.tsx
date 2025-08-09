@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Card from './Card';
 
 interface FilterControlsProps {
@@ -7,8 +7,7 @@ interface FilterControlsProps {
   groupBy: 'year' | 'month';
   minDate: string;
   maxDate: string;
-  setStartDate: (date: string) => void;
-  setEndDate: (date: string) => void;
+  onDatesChange: (start: string, end: string) => void;
   setGroupBy: (group: 'year' | 'month') => void;
 }
 
@@ -18,10 +17,25 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   groupBy,
   minDate,
   maxDate,
-  setStartDate,
-  setEndDate,
+  onDatesChange,
   setGroupBy,
 }) => {
+  const [localStartDate, setLocalStartDate] = useState(startDate);
+  const [localEndDate, setLocalEndDate] = useState(endDate);
+
+  useEffect(() => {
+    setLocalStartDate(startDate);
+  }, [startDate]);
+
+  useEffect(() => {
+    setLocalEndDate(endDate);
+  }, [endDate]);
+
+  const handleBlur = () => {
+    onDatesChange(localStartDate, localEndDate);
+  };
+
+
   return (
     <Card className="mb-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
@@ -30,13 +44,14 @@ const FilterControls: React.FC<FilterControlsProps> = ({
                 Start Date
                 </label>
                 <input
-                type="date"
-                id="start-date"
-                value={startDate}
-                min={minDate}
-                max={endDate || maxDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-background-light border-gray-600 rounded-md shadow-sm focus:border-brand-primary focus:ring-brand-primary text-text-primary p-2"
+                    type="date"
+                    id="start-date"
+                    value={localStartDate}
+                    min={minDate}
+                    max={localEndDate || maxDate}
+                    onChange={(e) => setLocalStartDate(e.target.value)}
+                    onBlur={handleBlur}
+                    className="w-full bg-background-light border-gray-600 rounded-md shadow-sm focus:border-brand-primary focus:ring-brand-primary text-text-primary p-2"
                 />
             </div>
             <div>
@@ -44,13 +59,14 @@ const FilterControls: React.FC<FilterControlsProps> = ({
                 End Date
                 </label>
                 <input
-                type="date"
-                id="end-date"
-                value={endDate}
-                min={startDate || minDate}
-                max={maxDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-background-light border-gray-600 rounded-md shadow-sm focus:border-brand-primary focus:ring-brand-primary text-text-primary p-2"
+                    type="date"
+                    id="end-date"
+                    value={localEndDate}
+                    min={localStartDate || minDate}
+                    max={maxDate}
+                    onChange={(e) => setLocalEndDate(e.target.value)}
+                    onBlur={handleBlur}
+                    className="w-full bg-background-light border-gray-600 rounded-md shadow-sm focus:border-brand-primary focus:ring-brand-primary text-text-primary p-2"
                 />
             </div>
             <div>

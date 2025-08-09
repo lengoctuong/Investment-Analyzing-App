@@ -1,5 +1,5 @@
 {
-  "name": "Fund Performance Analyzer - v1",
+  "name": "Fund Performance Analyzer - v2",
   "description": "A web application to analyze and visualize the performance of financial funds against benchmarks using key metrics like Total Return, Sharpe Ratio, Max Drawdown, and Beta.",
   "requestFramePermissions": [],
   "prompt": ""

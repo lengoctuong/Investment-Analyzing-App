@@ -4,17 +4,18 @@ import { ProcessedMetrics } from '../types';
 
 interface ChartProps {
   data: ProcessedMetrics[];
+  assetName: string;
 }
 
-const BetaChart: React.FC<ChartProps> = ({ data }) => {
+const BetaChart: React.FC<ChartProps> = ({ data, assetName }) => {
   // Only show Beta for the fund, as benchmark's beta against itself is not a useful metric to chart.
-  const fundData = data.filter(d => d.asset === 'Asset');
+  const fundData = data.filter(d => d.asset === assetName);
 
   const chartData = [...new Set(fundData.map(item => item.year))].map(year => {
     const assetData = fundData.find(d => d.year === year);
     return {
       year,
-      'Asset': assetData ? assetData['Beta'] : 0,
+      [assetName]: assetData ? assetData['Beta'] : 0,
     };
   });
 
@@ -37,7 +38,7 @@ const BetaChart: React.FC<ChartProps> = ({ data }) => {
           formatter={(value: number) => [value !== null ? value.toFixed(2) : 'N/A', 'Beta']}
         />
         <Legend />
-        <Bar dataKey="Asset" fill={'#818cf8'} radius={[4, 4, 0, 0]} />
+        <Bar dataKey={assetName} fill={'#818cf8'} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -3,10 +3,12 @@ import { ProcessedMetrics } from '../types';
 
 interface MetricsTableProps {
   data: ProcessedMetrics[];
+  assetName: string;
+  benchmarkName: string;
 }
 
-const MetricsTable: React.FC<MetricsTableProps> = ({ data }) => {
-  const assets = ['Asset', 'Benchmark'];
+const MetricsTable: React.FC<MetricsTableProps> = ({ data, assetName, benchmarkName }) => {
+  const assets = [assetName, benchmarkName];
   const periods = [...new Set(data.map(item => item.year))].sort((a, b) => {
       if (a === 'All') return 1;
       if (b === 'All') return -1;

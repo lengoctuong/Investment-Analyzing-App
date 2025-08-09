@@ -5,15 +5,6 @@ export interface RawDataItem {
   navCurrency?: string;
 }
 
-export interface YahooFinanceItem {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
 export interface DCResponse {
   returnValue: {
     fundData: RawDataItem[];
@@ -26,6 +17,12 @@ export interface FmarketResponse {
     navDate: string;
     nav: number;
   }[];
+}
+
+export interface YahooFinanceItem {
+  date: string;
+  close: number;
+  adjClose?: number;
 }
 
 export type DataSource = 'dc' | 'fmarket' | 'vnstock_stock' | 'vnstock_fund' | 'yfinance';

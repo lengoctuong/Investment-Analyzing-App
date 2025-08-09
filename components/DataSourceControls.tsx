@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Card from './Card';
 import { DataSource, DCResponse, FmarketResponse, TimeSeriesData } from '../types';
 import { parseDCData, parseFmarketData } from '../services/dataService';
 import { fetchVNStockData, fetchYahooFinanceData, fetchDefaultBenchmarkData } from '../services/apiService';
 
 interface DataSourceControlsProps {
-  onDataLoaded: (fundData: TimeSeriesData[], benchmarkData: TimeSeriesData[], minDate: string, maxDate: string) => void;
+  onDataLoaded: (fundData: TimeSeriesData[], benchmarkData: TimeSeriesData[], minDate: string, maxDate: string, assetName: string, benchmarkName: string, source: DataSource, ticker?: string) => void;
   setIsLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -13,9 +13,26 @@ interface DataSourceControlsProps {
 const DataSourceControls: React.FC<DataSourceControlsProps> = ({ onDataLoaded, setIsLoading, setError }) => {
     const [source, setSource] = useState<DataSource>('dc');
     const [fundFile, setFundFile] = useState<File | null>(null);
-    const [ticker, setTicker] = useState<string>('BTC-USD');
+    const [ticker, setTicker] = useState<string>('');
     const [apiStartDate, setApiStartDate] = useState<string>('2020-01-01');
     const [apiEndDate, setApiEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+    useEffect(() => {
+        switch(source) {
+            case 'yfinance':
+                setTicker('BTC-USD');
+                break;
+            case 'vnstock_stock':
+                setTicker('VNDIAMOND');
+                break;
+            case 'vnstock_fund':
+                setTicker('DCDS');
+                break;
+            default:
+                setTicker('');
+                break;
+        }
+    }, [source]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -25,22 +42,13 @@ const DataSourceControls: React.FC<DataSourceControlsProps> = ({ onDataLoaded, s
     
     const getMinMaxDates = (data: TimeSeriesData[]): { minDate: string, maxDate: string } => {
         if (data.length === 0) return { minDate: '', maxDate: '' };
-
-        const toDate = (d: any) => {
-            if (!d) return undefined;
-            return d instanceof Date ? d : new Date(d);
+        const dates = data.map(d => d.timestamp);
+        const min = new Date(Math.min(...dates.map(d => d.getTime())));
+        const max = new Date(Math.max(...dates.map(d => d.getTime())));
+        return { 
+            minDate: min.toISOString().split('T')[0], 
+            maxDate: max.toISOString().split('T')[0] 
         };
-
-        const firstDate = toDate(data[0].timestamp);
-        const lastDate = toDate(data[data.length - 1].timestamp);
-
-        if (!firstDate || !lastDate || isNaN(firstDate.getTime()) || isNaN(lastDate.getTime())) {
-            return { minDate: '', maxDate: '' };
-        }
-
-        const min = firstDate.toISOString().split('T')[0];
-        const max = lastDate.toISOString().split('T')[0];
-        return { minDate: min, maxDate: max };
     };
 
     const handleLoadData = async () => {
@@ -50,41 +58,54 @@ const DataSourceControls: React.FC<DataSourceControlsProps> = ({ onDataLoaded, s
         try {
             let fundData: TimeSeriesData[] = [];
             let benchmarkData: TimeSeriesData[] = [];
+            let assetName = '';
+            let benchmarkName = 'VN-Index';
+            let tickerSymbol = source.includes('stock') || source.includes('fund') || source === 'yfinance' ? ticker : undefined;
             
             switch (source) {
                 case 'dc':
                     if (!fundFile) throw new Error('Please select a Dragon Capital JSON file.');
+                    assetName = fundFile.name.replace(/\.json$/i, '');
                     const dcText = await fundFile.text();
                     const dcData: DCResponse = JSON.parse(dcText);
                     const parsedDc = parseDCData(dcData);
                     fundData = parsedDc.fundData;
                     benchmarkData = parsedDc.benchmarkData;
+                    // DC data includes its own benchmark, so we keep its name.
+                    benchmarkName = 'VN-Index'; 
                     break;
 
                 case 'fmarket':
                     if (!fundFile) throw new Error('Please select an Fmarket JSON file.');
+                    assetName = fundFile.name.replace(/\.json$/i, '');
                     const fmarketText = await fundFile.text();
                     const fmarketData: FmarketResponse = JSON.parse(fmarketText);
                     fundData = parseFmarketData(fmarketData);
-                    benchmarkData = await fetchDefaultBenchmarkData(); // Use default benchmark
+                    if (fundData.length > 0) {
+                        const { minDate, maxDate } = getMinMaxDates(fundData);
+                        benchmarkData = await fetchDefaultBenchmarkData(minDate, maxDate);
+                    }
                     break;
                 
                 case 'vnstock_stock':
-                    if (!ticker) throw new Error('Please enter a stock ticker.');
-                    fundData = await fetchVNStockData(ticker, apiStartDate, apiEndDate, false);
-                    benchmarkData = await fetchDefaultBenchmarkData();
-                    break;
-
                 case 'vnstock_fund':
-                    if (!ticker) throw new Error('Please enter a fund ticker.');
-                    fundData = await fetchVNStockData(ticker, apiStartDate, apiEndDate, true);
-                    benchmarkData = await fetchDefaultBenchmarkData();
+                    if (!ticker) throw new Error('Please enter a ticker.');
+                    assetName = ticker;
+                    fundData = await fetchVNStockData(ticker, apiStartDate, apiEndDate, source === 'vnstock_fund');
+                    if (fundData.length > 0) {
+                        const { minDate, maxDate } = getMinMaxDates(fundData);
+                        benchmarkData = await fetchDefaultBenchmarkData(minDate, maxDate);
+                    }
                     break;
 
                 case 'yfinance':
                     if (!ticker) throw new Error('Please enter a ticker.');
+                    assetName = ticker;
                     fundData = await fetchYahooFinanceData(ticker, apiStartDate, apiEndDate);
-                    benchmarkData = await fetchDefaultBenchmarkData(); // Assuming VN-Index as default benchmark
+                    if (fundData.length > 0) {
+                        const { minDate, maxDate } = getMinMaxDates(fundData);
+                        benchmarkData = await fetchDefaultBenchmarkData(minDate, maxDate);
+                    }
                     break;
             }
 
@@ -93,7 +114,7 @@ const DataSourceControls: React.FC<DataSourceControlsProps> = ({ onDataLoaded, s
             }
             
             const { minDate, maxDate } = getMinMaxDates(fundData);
-            onDataLoaded(fundData, benchmarkData, minDate, maxDate);
+            onDataLoaded(fundData, benchmarkData, minDate, maxDate, assetName, benchmarkName, source, tickerSymbol);
 
         } catch (e) {
             if (e instanceof Error) {
@@ -202,10 +223,6 @@ const DataSourceControls: React.FC<DataSourceControlsProps> = ({ onDataLoaded, s
                             <option value="vnstock_fund">VNStock API (Fund)</option>
                             <option value="yfinance">yahoo-finance2 API</option>
                         </select>
-                        <p className="text-xs text-text-secondary mt-2">
-                           {source.includes('api') && "Note: API sources are currently simulated using mock data."}
-                           {source === 'fmarket' && "Note: Benchmark will be the default VN-Index."}
-                        </p>
                     </div>
 
                     <div className="mt-4">
