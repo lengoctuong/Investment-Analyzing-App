@@ -1,76 +1,163 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import FilterControls from './components/FilterControls';
 import DataSourceControls from './components/DataSourceControls';
 import PriceChart from './components/PriceChart';
-import { TimeSeriesData, ProcessedMetrics, DataSource } from './types';
+import { TimeSeriesData, ProcessedMetrics, Asset, AssetItem } from './types';
 import { calculatePerformanceMetrics } from './services/performanceCalculator';
-import { fetchDefaultBenchmarkData, fetchYahooFinanceData, fetchVNStockData } from './services/apiService';
+import { fetchVNStockData, fetchYahooFinanceData } from './services/apiService';
 
 type TimeRange = 'ytd' | '3m' | '6m' | '1y' | '3y' | '5y' | 'max';
 
-const getMinMaxDates = (data: TimeSeriesData[]): { minDate: string, maxDate: string } => {
-    if (data.length === 0) return { minDate: '', maxDate: '' };
-    const dates = data.map(d => d.timestamp);
-    const min = new Date(Math.min(...dates.map(d => d.getTime())));
-    const max = new Date(Math.max(...dates.map(d => d.getTime())));
-    return { 
-        minDate: min.toISOString().split('T')[0], 
-        maxDate: max.toISOString().split('T')[0] 
+const COLORS = ['#14b8a6', '#3b82f6', '#ec4899', '#8b5cf6', '#f59e0b', '#ef4444', '#f97316'];
+
+const getMinMaxDates = (data: TimeSeriesData[][]): { minDate: string, maxDate: string } => {
+    if (data.some(d => d.length === 0)) {
+        return { minDate: '', maxDate: '' };
+    }
+
+    const ranges = data.map(d => {
+        const timestamps = d.map(p => p.timestamp.getTime());
+        return {
+            min: Math.min(...timestamps),
+            max: Math.max(...timestamps)
+        };
+    });
+
+    const overallMin = Math.max(...ranges.map(r => r.min));
+    const overallMax = Math.min(...ranges.map(r => r.max));
+    
+    if (overallMin >= overallMax) {
+        return { minDate: '', maxDate: '' };
+    }
+
+    return {
+        minDate: new Date(overallMin).toISOString().split('T')[0],
+        maxDate: new Date(overallMax).toISOString().split('T')[0]
     };
 };
 
 
 const App: React.FC = () => {
+  // Data state
   const [performanceData, setPerformanceData] = useState<ProcessedMetrics[]>([]);
+  const [fullAssetsData, setFullAssetsData] = useState<Asset[]>([]);
+  const [fullBenchmarkData, setFullBenchmarkData] = useState<Asset | null>(null);
+  
+  // UI State
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
   const [dataLoaded, setDataLoaded] = useState(false);
 
-  const [fullFundData, setFullFundData] = useState<TimeSeriesData[]>([]);
-  const [fullBenchmarkData, setFullBenchmarkData] = useState<TimeSeriesData[]>([]);
-  
-  const [assetName, setAssetName] = useState('Asset');
-  const [benchmarkName, setBenchmarkName] = useState('Benchmark');
-
+  // Filter & Range State
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [groupBy, setGroupBy] = useState<'year' | 'month'>('year');
-  const [minDate, setMinDate] = useState<string>('');
-  const [maxDate, setMaxDate] = useState<string>('');
+  const [minDate, setMinDate] = useState<string>(''); // The earliest common date from loaded data
+  const [maxDate, setMaxDate] = useState<string>(''); // The latest common date from loaded data
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRange | 'custom'>('ytd');
 
-  const [dataSource, setDataSource] = useState<DataSource | null>(null);
-  const [ticker, setTicker] = useState<string>('');
+  // Data Source Configuration State
+  const [assetItems, setAssetItems] = useState<AssetItem[]>([
+      { source: 'vnstock_stock', ticker: 'FPT' },
+      { source: 'vnstock_fund', ticker: 'DCDS' },
+      { source: 'yfinance', ticker: 'BTC-USD'}
+  ]);
+  const [benchmarkTicker, setBenchmarkTicker] = useState<string>('VNINDEX');
+  const [apiStartDate, setApiStartDate] = useState<string>('2020-01-01');
+  const [apiEndDate, setApiEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [colorMap, setColorMap] = useState<Map<string, string>>(new Map());
 
-  const handleDataLoaded = useCallback((
-    fundData: TimeSeriesData[], 
-    benchmarkData: TimeSeriesData[], 
-    minDateStr: string, 
-    maxDateStr: string,
-    asset: string,
-    benchmark: string,
-    source?: DataSource,
-    tickerSymbol?: string,
-  ) => {
-    setFullFundData(fundData);
-    setFullBenchmarkData(benchmarkData);
-    setMinDate(minDateStr);
-    setMaxDate(maxDateStr);
-    setStartDate(minDateStr); 
-    setEndDate(maxDateStr);
-    setAssetName(asset);
-    setBenchmarkName(benchmark);
-    if(source) setDataSource(source);
-    if(tickerSymbol) setTicker(tickerSymbol);
-    setActiveTimeRange('max');
-    setDataLoaded(true);
-  }, []);
+
+  const fetchAndProcessData = useCallback(async (fetchStart: string, fetchEnd: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    const today = new Date().toISOString().split('T')[0];
+    const effectiveEndDate = fetchEnd > today ? today : fetchEnd;
+
+    if (fetchStart >= effectiveEndDate) {
+      setError('Error: Start date must be before end date.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+        if (assetItems.length === 0) throw new Error('Please add at least one asset.');
+        if (!benchmarkTicker) throw new Error('Please specify a benchmark ticker.');
+
+        const fetchPromises: Promise<Asset>[] = [];
+
+        fetchPromises.push(
+            fetchVNStockData(benchmarkTicker, fetchStart, effectiveEndDate, false)
+                .then(data => ({ name: benchmarkTicker, data }))
+        );
+
+        const uniqueAssets = assetItems.filter(a => a.ticker.toUpperCase() !== benchmarkTicker.toUpperCase());
+        
+        uniqueAssets.forEach(asset => {
+            if (!asset.ticker) return;
+            let fetcher: Promise<TimeSeriesData[]>;
+            if (asset.source === 'yfinance') {
+                fetcher = fetchYahooFinanceData(asset.ticker, fetchStart, effectiveEndDate);
+            } else {
+                fetcher = fetchVNStockData(asset.ticker, fetchStart, effectiveEndDate, asset.source === 'vnstock_fund');
+            }
+            fetchPromises.push(fetcher.then(data => ({ name: asset.ticker, data })));
+        });
+
+        const results = await Promise.all(fetchPromises);
+        const benchmarkResult = results[0];
+        const assetResults = results.slice(1);
+        
+        if (assetResults.some(a => a.data.length === 0) || benchmarkResult.data.length === 0) {
+             throw new Error('No data found for one or more tickers. Please check tickers and ensure the date range is valid.');
+        }
+
+        const allDataSets = [benchmarkResult.data, ...assetResults.map(a => a.data)];
+        const { minDate: newMinDate, maxDate: newMaxDate } = getMinMaxDates(allDataSets);
+
+        if (!newMinDate || !newMaxDate) {
+          throw new Error('No overlapping data found for the selected assets and date range. Try a broader date range.');
+        }
+
+        const finalAssetNames = assetResults.map(a => a.name);
+        const allNamesForColors = [...finalAssetNames, benchmarkResult.name];
+        const newColorMap = new Map<string, string>();
+        allNamesForColors.forEach((name, index) => {
+            newColorMap.set(name, COLORS[index % COLORS.length]);
+        });
+        setColorMap(newColorMap);
+        
+        setFullAssetsData(assetResults);
+        setFullBenchmarkData(benchmarkResult);
+        setMinDate(newMinDate);
+        setMaxDate(newMaxDate);
+        setStartDate(newMinDate); 
+        setEndDate(newMaxDate);
+        setApiStartDate(fetchStart);
+        setApiEndDate(effectiveEndDate);
+        setActiveTimeRange('max');
+        setDataLoaded(true);
+
+    } catch (e) {
+        if (e instanceof Error) {
+            setError(e.message);
+        } else {
+            setError('An unknown error occurred while loading data.');
+        }
+        setDataLoaded(false);
+        console.error(e);
+    } finally {
+        setIsLoading(false);
+    }
+  }, [assetItems, benchmarkTicker]);
+
 
   const handleSetTimeRange = useCallback((range: TimeRange) => {
-    if (!dataLoaded || !fullFundData.length) return;
+    if (!dataLoaded || !fullAssetsData.length) return;
     
     const lastDate = new Date(maxDate + 'T23:59:59');
     let newStartDate: Date;
@@ -116,67 +203,20 @@ const App: React.FC = () => {
     setStartDate(newStartDateStr);
     setEndDate(newEndDateStr);
     setActiveTimeRange(range);
-  }, [dataLoaded, fullFundData.length, minDate, maxDate]);
+  }, [dataLoaded, fullAssetsData.length, minDate, maxDate]);
 
+  const handleDatesSet = useCallback((start: string, end: string) => {
+    if (start > end) return; // Should be prevented by input controls
 
-  const handleDatesSet = useCallback(async (start: string, end: string) => {
-    let finalStart = start;
-    let finalEnd = end;
-    
-    const isApiSource = dataSource === 'yfinance' || dataSource === 'vnstock_fund' || dataSource === 'vnstock_stock';
+    const isOutsideBounds = dataLoaded && (start < minDate || end > maxDate);
 
-    if (isApiSource && ticker && (start < minDate || end > maxDate)) {
-        setIsLoading(true);
-        setError(null);
-        try {
-            let newFundData: TimeSeriesData[];
-            if (dataSource === 'yfinance') {
-                 newFundData = await fetchYahooFinanceData(ticker, start, end);
-            } else { // vnstock
-                 newFundData = await fetchVNStockData(ticker, start, end, dataSource === 'vnstock_fund');
-            }
-           
-            const newBenchmarkData = await fetchDefaultBenchmarkData(start, end);
-            
-            if (newFundData.length > 0) {
-                const { minDate: newMin, maxDate: newMax } = getMinMaxDates(newFundData);
-                handleDataLoaded(
-                    newFundData, newBenchmarkData, newMin, newMax, 
-                    assetName, benchmarkName, dataSource, ticker
-                );
-                setStartDate(start > newMin ? start : newMin);
-                setEndDate(end < newMax ? end : newMax);
-            } else {
-                throw new Error("No data found for the new date range.");
-            }
-        } catch(e) {
-            if (e instanceof Error) setError(e.message);
-            setStartDate(minDate);
-            setEndDate(maxDate);
-        } finally {
-            setIsLoading(false);
-        }
+    if (isOutsideBounds) {
+        fetchAndProcessData(start, end);
     } else {
-        if (start < minDate) finalStart = minDate;
-        if (end > maxDate) finalEnd = maxDate;
-        if (finalStart > finalEnd) {
-            finalStart = finalEnd;
-        }
-        setStartDate(finalStart);
-        setEndDate(finalEnd);
+        setStartDate(start);
+        setEndDate(end);
     }
-}, [dataSource, ticker, minDate, maxDate, assetName, benchmarkName, handleDataLoaded]);
-
-
-  useEffect(() => {
-    if (!dataLoaded) return;
-    // This check is to satisfy TypeScript, as activeTimeRange can be 'custom'
-    // but handleSetTimeRange only accepts TimeRange. In practice, when this
-    // effect runs due to dataLoaded changing, activeTimeRange will be a valid TimeRange.
-    if (activeTimeRange !== 'custom') {
-      handleSetTimeRange(activeTimeRange);
-    }
-  }, [dataLoaded, handleSetTimeRange]);
+  }, [minDate, maxDate, dataLoaded, fetchAndProcessData]);
 
   useEffect(() => {
     if (!dataLoaded) return;
@@ -234,45 +274,42 @@ const App: React.FC = () => {
     }
   }, [startDate, endDate, minDate, maxDate, dataLoaded, activeTimeRange]);
 
-
-  const { chartFundData, chartBenchmarkData } = useMemo(() => {
-    if (!dataLoaded || !fullFundData.length || !startDate || !endDate) {
-        return { chartFundData: [], chartBenchmarkData: [] };
+  const { chartAssetsData, chartBenchmarkData } = useMemo(() => {
+    if (!dataLoaded || !fullAssetsData.length || !startDate || !endDate) {
+        return { chartAssetsData: [], chartBenchmarkData: null };
     }
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
 
-    const filteredFund = fullFundData.filter(d => d.timestamp >= start && d.timestamp <= end);
-    const filteredBenchmark = fullBenchmarkData.filter(d => d.timestamp >= start && d.timestamp <= end);
+    const filterData = (asset: Asset) => ({
+      ...asset,
+      data: asset.data.filter(d => d.timestamp >= start && d.timestamp <= end)
+    });
 
-    return { chartFundData: filteredFund, chartBenchmarkData: filteredBenchmark };
-  }, [dataLoaded, fullFundData, fullBenchmarkData, startDate, endDate]);
+    return { 
+      chartAssetsData: fullAssetsData.map(filterData), 
+      chartBenchmarkData: fullBenchmarkData ? filterData(fullBenchmarkData) : null
+    };
+  }, [dataLoaded, fullAssetsData, fullBenchmarkData, startDate, endDate]);
 
   useEffect(() => {
-    if (!chartFundData.length) {
+    if (!chartAssetsData.length || !chartBenchmarkData || chartAssetsData.some(a => a.data.length === 0)) {
       setPerformanceData([]);
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
     const timer = setTimeout(() => {
         try {
-            const assets: { name: string; data: TimeSeriesData[] }[] = [
-              { name: assetName, data: chartFundData },
-              { name: benchmarkName, data: chartBenchmarkData },
-            ];
-            
+            const allAssets: Asset[] = [...chartAssetsData, chartBenchmarkData];
             const allMetrics: ProcessedMetrics[] = [];
             
-            assets.forEach(asset => {
-              const metrics = calculatePerformanceMetrics(asset.data, chartBenchmarkData, groupBy);
+            allAssets.forEach(asset => {
+              const metrics = calculatePerformanceMetrics(asset.data, chartBenchmarkData.data, groupBy);
               for (const period in metrics) {
                   allMetrics.push({
-                  year: period,
-                  asset: asset.name,
-                  ...metrics[period],
+                    year: period,
+                    asset: asset.name,
+                    ...metrics[period],
                   });
               }
             });
@@ -280,31 +317,27 @@ const App: React.FC = () => {
             allMetrics.sort((a, b) => {
                 if (a.year === 'All') return 1;
                 if (b.year === 'All') return -1;
-                return a.year.localeCompare(b.year);
+                if (a.year !== b.year) return a.year.localeCompare(b.year);
+                return a.asset.localeCompare(b.asset);
             });
 
             setPerformanceData(allMetrics);
             
         } catch (e) {
-            if (e instanceof Error) {
-                setError(e.message);
-            } else {
-                setError('An unknown error occurred.');
-            }
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
+            // Error handling for calculation is minimal as major data issues are caught in fetch
+        } 
     }, 50);
 
     return () => clearTimeout(timer);
 
-  }, [chartFundData, chartBenchmarkData, groupBy, assetName, benchmarkName]);
+  }, [chartAssetsData, chartBenchmarkData, groupBy]);
 
 
   const overallMetrics = useMemo(() => {
     return performanceData.filter(d => d.year === 'All');
   }, [performanceData]);
+  
+  const assetNames = useMemo(() => fullAssetsData.map(a => a.name), [fullAssetsData]);
 
   const renderContent = () => {
     if (isLoading) {
@@ -336,16 +369,15 @@ const App: React.FC = () => {
           </div>
        );
     }
-    if (dataLoaded) {
+    if (dataLoaded && chartBenchmarkData) {
         return (
             <>
                 <PriceChart 
-                    fundData={chartFundData} 
-                    benchmarkData={chartBenchmarkData} 
-                    assetName={assetName} 
-                    benchmarkName={benchmarkName}
+                    assets={chartAssetsData} 
+                    benchmark={chartBenchmarkData} 
                     activeTimeRange={activeTimeRange}
                     setActiveTimeRange={handleSetTimeRange}
+                    colorMap={colorMap}
                 />
                 <FilterControls
                     startDate={startDate}
@@ -360,13 +392,24 @@ const App: React.FC = () => {
                     performanceData={performanceData} 
                     overallMetrics={overallMetrics} 
                     groupBy={groupBy}
-                    assetName={assetName}
-                    benchmarkName={benchmarkName}
+                    assetNames={assetNames}
+                    benchmarkName={chartBenchmarkData.name}
+                    colorMap={colorMap}
                 />
             </>
         );
     }
-    return <DataSourceControls onDataLoaded={handleDataLoaded} setIsLoading={setIsLoading} setError={setError} />;
+    return <DataSourceControls 
+              assetItems={assetItems}
+              setAssetItems={setAssetItems}
+              benchmarkTicker={benchmarkTicker}
+              setBenchmarkTicker={setBenchmarkTicker}
+              apiStartDate={apiStartDate}
+              setApiStartDate={setApiStartDate}
+              apiEndDate={apiEndDate}
+              setApiEndDate={setApiEndDate}
+              onLoadData={() => fetchAndProcessData(apiStartDate, apiEndDate)}
+            />;
   }
 
   return (

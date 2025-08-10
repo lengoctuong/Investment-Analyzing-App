@@ -1,3 +1,5 @@
+
+
 export interface RawDataItem {
   navDate: string;
   navPrice?: number;
@@ -19,17 +21,21 @@ export interface FmarketResponse {
   }[];
 }
 
-export interface YahooFinanceItem {
-  date: string;
-  close: number;
-  adjClose?: number;
-}
+export type DataSource = 'vnstock_stock' | 'vnstock_fund' | 'yfinance';
 
-export type DataSource = 'dc' | 'fmarket' | 'vnstock_stock' | 'vnstock_fund' | 'yfinance';
+export type AssetItem = {
+    source: DataSource;
+    ticker: string;
+}
 
 export interface TimeSeriesData {
   timestamp: Date;
   value: number;
+}
+
+export interface Asset {
+  name: string;
+  data: TimeSeriesData[];
 }
 
 export interface PerformanceMetrics {

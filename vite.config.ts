@@ -16,16 +16,6 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       }
-    },
-    server: {
-      proxy: {
-        // Khi FE gọi /api thì Vite sẽ proxy qua ngrok
-        '/api': {
-          target: 'http://localhost:3001/',
-          changeOrigin: true,
-          secure: false,
-        }
-      }
     }
   };
 });

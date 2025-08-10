@@ -1,27 +1,32 @@
+
 import React from 'react';
-import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar } from 'recharts';
+import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar, ReferenceLine, Label } from 'recharts';
 import { ProcessedMetrics } from '../types';
 
 interface ChartProps {
   data: ProcessedMetrics[];
-  assetName: string;
+  benchmarkName: string;
+  assetNames: string[];
+  colorMap: Map<string, string>;
 }
 
-const BetaChart: React.FC<ChartProps> = ({ data, assetName }) => {
-  // Only show Beta for the fund, as benchmark's beta against itself is not a useful metric to chart.
-  const fundData = data.filter(d => d.asset === assetName);
-
-  const chartData = [...new Set(fundData.map(item => item.year))].map(year => {
-    const assetData = fundData.find(d => d.year === year);
-    return {
-      year,
-      [assetName]: assetData ? assetData['Beta'] : 0,
-    };
+const BetaChart: React.FC<ChartProps> = ({ data, benchmarkName, assetNames, colorMap }) => {
+  const filteredData = data.filter(d => d.asset !== benchmarkName && d.Beta !== null);
+  // Use the passed-in assetNames to ensure the order is correct.
+  const assetsInChart = assetNames.filter(name => filteredData.some(d => d.asset === name));
+  
+  const chartData = [...new Set(filteredData.map(item => item.year))].map(year => {
+    const yearData: { [key: string]: string | number } = { year };
+    assetsInChart.forEach(asset => {
+        const assetData = filteredData.find(d => d.year === year && d.asset === asset);
+        yearData[asset] = assetData ? assetData['Beta'] as number : 0;
+    });
+    return yearData;
   });
 
   return (
     <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+      <BarChart data={chartData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#4b5563" />
         <XAxis dataKey="year" stroke="#9ca3af" />
         <YAxis
@@ -35,10 +40,15 @@ const BetaChart: React.FC<ChartProps> = ({ data, assetName }) => {
             borderColor: '#4b5563',
             color: '#f9fafb'
           }}
-          formatter={(value: number) => [value !== null ? value.toFixed(2) : 'N/A', 'Beta']}
+          formatter={(value: number) => [value.toFixed(2), 'Beta']}
         />
         <Legend />
-        <Bar dataKey={assetName} fill={'#818cf8'} radius={[4, 4, 0, 0]} />
+        <ReferenceLine y={1} stroke="#a3a3a3" strokeDasharray="4 4">
+            <Label value="Benchmark" position="insideTopRight" fill="#a3a3a3" fontSize={12} offset={10}/>
+        </ReferenceLine>
+        {assetsInChart.map((asset) => (
+          <Bar key={asset} dataKey={asset} name={asset} fill={colorMap.get(asset) || '#c084fc'} radius={[4, 4, 0, 0]} />
+        ))}
       </BarChart>
     </ResponsiveContainer>
   );

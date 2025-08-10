@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import pandas as pd
 from datetime import datetime, timedelta
+
+import yfinance as yf
 from vnstock import Quote, Fund
 
 # Giả sử bạn đã import hoặc định nghĩa sẵn Quote, Fund, filter_df_by_date_range ở đây
@@ -57,6 +59,19 @@ def read_vnstock(ticker, is_fund=False, source='VCI', start=None, end=None):
         df_fund['value'] = df_fund['value'].shift(-1)
         return df_fund[:-1]
 
+def read_yfinance(ticker="BTC-USD", start=None, end=None):
+    res = yf.download(
+        ticker, 
+        start=datetime.strptime(start if start else "01-01-2020", "%d-%m-%Y").strftime("%Y-%m-%d"), 
+        end=datetime.strptime(end, "%d-%m-%Y").strftime("%Y-%m-%d") if end else pd.to_datetime("today").strftime('%Y-%m-%d'),
+        interval="1d", 
+        progress=False
+    )
+
+    df = res[['Close']].reset_index()
+    df.columns = ['timestamp', 'value']
+    return df
+
 @app.get("/api/vnstock")
 def api_vnstock(
     ticker: str = Query(..., description="Ticker symbol"),
@@ -75,4 +90,22 @@ def api_vnstock(
     df['timestamp'] = df['timestamp'].dt.strftime('%Y-%m-%dT%H:%M:%S')
 
     # Trả về list dict JSON
+    return df.to_dict(orient='records')
+
+@app.get("/api/yfinance")
+def api_yfinance(
+    ticker: str = Query(..., description="Ticker symbol, ví dụ: BTC-USD, AAPL"),
+    start: str = Query(None, description="Start date (dd-mm-yyyy)"),
+    end: str = Query(None, description="End date (dd-mm-yyyy)")
+):
+    try:
+        df = read_yfinance(ticker, start, end)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Chuyển datetime thành ISO string
+    df = df.copy()
+    df['timestamp'] = df['timestamp'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+
+    # Trả về dạng JSON list
     return df.to_dict(orient='records')
