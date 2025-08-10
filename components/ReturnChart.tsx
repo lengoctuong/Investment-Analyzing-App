@@ -1,23 +1,25 @@
+
 import React from 'react';
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar } from 'recharts';
 import { ProcessedMetrics } from '../types';
 
 interface ChartProps {
   data: ProcessedMetrics[];
+  assetNames: string[];
+  benchmarkName: string;
+  colorMap: Map<string, string>;
 }
 
-const ReturnChart: React.FC<ChartProps> = ({ data }) => {
-  const assets = [...new Set(data.map(item => item.asset))];
+const ReturnChart: React.FC<ChartProps> = ({ data, assetNames, benchmarkName, colorMap }) => {
+  const orderedAssets = [...assetNames, benchmarkName];
   const chartData = [...new Set(data.map(item => item.year))].map(year => {
     const yearData: { [key: string]: string | number } = { year };
-    assets.forEach(asset => {
+    orderedAssets.forEach(asset => {
       const assetData = data.find(d => d.year === year && d.asset === asset);
       yearData[asset] = assetData ? assetData['Total Return'] : 0;
     });
     return yearData;
   });
-
-  const colors = ['#14b8a6', '#f97316', '#3b82f6', '#ec4899'];
 
   return (
     <ResponsiveContainer width="100%" height={400}>
@@ -38,8 +40,8 @@ const ReturnChart: React.FC<ChartProps> = ({ data }) => {
           formatter={(value: number) => [`${(value * 100).toFixed(2)}%`, 'Return']}
         />
         <Legend />
-        {assets.map((asset, index) => (
-          <Bar key={asset} dataKey={asset} fill={colors[index % colors.length]} radius={[4, 4, 0, 0]} />
+        {orderedAssets.map((asset) => (
+          <Bar key={asset} dataKey={asset} name={asset} fill={colorMap.get(asset) || '#8884d8'} radius={[4, 4, 0, 0]} />
         ))}
       </BarChart>
     </ResponsiveContainer>

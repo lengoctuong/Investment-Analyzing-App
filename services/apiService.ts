@@ -1,98 +1,100 @@
-import { YahooFinanceItem, DCResponse, TimeSeriesData } from '../types';
+import { TimeSeriesData, DCResponse } from '../types';
 import { parseDCData } from './dataService';
 
-let cachedFundData: TimeSeriesData[] | null = null;
-let cachedBenchmarkData: TimeSeriesData[] | null = null;
-
-function mapYahooFinanceToTimeSeries(rawData: YahooFinanceItem[]): TimeSeriesData[] {
-  return rawData.map(d => ({
-    timestamp: new Date(d.date),
-    value: d.close // lấy giá đóng cửa
-  }));
-}
-
-const getMockData = async (): Promise<{ fundData: TimeSeriesData[], benchmarkData: TimeSeriesData[] }> => {
-    if (cachedFundData && cachedBenchmarkData) {
-        return { fundData: cachedFundData, benchmarkData: cachedBenchmarkData };
-    }
-    const response = await fetch('./data/DCDS.json');
-    const rawData: DCResponse = await response.json();
-    const { fundData, benchmarkData } = parseDCData(rawData);
-    cachedFundData = fundData;
-    cachedBenchmarkData = benchmarkData;
-    return { fundData, benchmarkData };
-}
-
-const filterDataByDate = (data: TimeSeriesData[], start: Date, end: Date) => {
-    return data.filter(d => d.timestamp >= start && d.timestamp <= end);
+// Helper to convert YYYY-MM-DD to DD-MM-YYYY for the new API
+const formatDateToDDMMYYYY = (dateString: string): string => {
+    if (!dateString || !dateString.includes('-')) return '';
+    const [year, month, day] = dateString.split('-');
+    return `${day}-${month}-${year}`;
 };
 
-// Simulate fetching VNStock data
+// Updated to fetch from the Python backend
 export const fetchVNStockData = async (ticker: string, start: string, end: string, isFund: boolean = false): Promise<TimeSeriesData[]> => {
-    console.log(`Simulating API call for ${ticker} from ${start} to ${end}`);
-    // We'll use the DCDS fund data as mock for any ticker, and VN-Index for benchmark
-    const { fundData, benchmarkData } = await getMockData();
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    const formattedStart = formatDateToDDMMYYYY(start);
+    const formattedEnd = formatDateToDDMMYYYY(end);
     
-    let sourceData = fundData; // Default to fund data for any ticker
-    if (ticker.toUpperCase() === 'VN-INDEX' || ticker.toUpperCase() === '^VNINDEX') {
-      sourceData = benchmarkData;
+    const params = new URLSearchParams({
+        ticker: ticker.toUpperCase(),
+        is_fund: String(isFund),
+    });
+
+    if(formattedStart) params.append('start', formattedStart);
+    if(formattedEnd) params.append('end', formattedEnd);
+
+    const url = `http://localhost:8000/api/vnstock?${params.toString()}`;
+    
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to fetch VNStock data for ${ticker}: ${res.statusText} - ${errorText}`);
+        }
+
+        const rawData: {timestamp: string, value: number}[] = await res.json();
+        
+        return rawData
+          .map(d => ({
+              timestamp: new Date(d.timestamp),
+              value: d.value
+          }))
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    } catch (e) {
+        if (e instanceof Error) {
+            console.error(e.message);
+            throw new Error(`Could not connect to the backend API service. Please ensure it's running. Details: ${e.message}`);
+        }
+        throw e;
     }
-
-    let result = filterDataByDate(sourceData, startDate, endDate);
-
-    // Apply fund-specific logic from user's python code
-    if (isFund && ticker.toUpperCase() !== 'VN-INDEX') {
-         // The python code shifts the value up by one day.
-         result = result.map((item, index, arr) => {
-            if (index < arr.length - 1) {
-                return { ...item, value: arr[index + 1].value };
-            }
-            // For the last item, we can't shift, so we'll drop it.
-            return null;
-        }).filter((item): item is TimeSeriesData => item !== null);
-    }
-
-    return new Promise(resolve => setTimeout(() => resolve(result), 500)); // Simulate network delay
 };
 
-export const fetchYahooFinanceData = async (ticker: string, start: string, end: string) => {
-    const url = `https://e96a09bf9b79.ngrok-free.app/api/yfinance?ticker=${ticker}&start=${start}&end=${end}`;
-    const res = await fetch(url, {
-      headers: { "ngrok-skip-browser-warning": "anyvalue" }
+export const fetchYahooFinanceData = async (ticker: string, start: string, end: string): Promise<TimeSeriesData[]> => {
+    const formattedStart = formatDateToDDMMYYYY(start);
+    const formattedEnd = formatDateToDDMMYYYY(end);
+    
+    const params = new URLSearchParams({
+        ticker: ticker.toUpperCase(),
     });
-    const rawData = await res.json();
-    if (!res.ok) throw new Error('Failed to fetch data');
 
-    const fundData: TimeSeriesData[] = mapYahooFinanceToTimeSeries(rawData);
-    return await fundData;
-  };
+    if(formattedStart) params.append('start', formattedStart);
+    if(formattedEnd) params.append('end', formattedEnd);
 
-// export const fetchYahooFinanceData = async (ticker: string, start: string, end: string): Promise<TimeSeriesData[]> => {
-//     console.log(`Fetching data for ${ticker} from ${start} to ${end} using yahoo-finance2`);
-//     try {
-//         const result = await yahooFinance.historical(ticker, {
-//             period1: start,
-//             period2: end,
-//             interval: '1d',
-//             includeAdjustedClose: true
-//         });
-//         return result
-//             .filter(row => row.adjClose != null && !isNaN(row.adjClose))
-//             .map(row => ({
-//                 timestamp: new Date(row.date),
-//                 value: row.adjClose as number,
-//             }))
-//             .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-//     } catch (err) {
-//         console.error(`Error fetching data for ${ticker} from yahoo-finance2:`, err);
-//         throw new Error(`Failed to fetch data for ${ticker} from yahoo-finance2.`);
-//     }
-// };
+    const url = `http://localhost:8000/api/yfinance?${params.toString()}`;
+    
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to fetch Yahoo Finance data for ${ticker}: ${res.statusText} - ${errorText}`);
+        }
 
-// We need a way to get the benchmark data for non-DC sources
-export const fetchDefaultBenchmarkData = async (): Promise<TimeSeriesData[]> => {
-    const { benchmarkData } = await getMockData();
-    return benchmarkData;
+        const rawData: {timestamp: string, value: number}[] = await res.json();
+        const isVnStock = ticker.toUpperCase().endsWith('.VN');
+        
+        return rawData
+          .map(d => {
+              let value = d.value;
+              // Normalize VN stock values from yfinance (VND) to match vnstock (thousands of VND)
+              if (isVnStock) {
+                  value /= 1000;
+              }
+              return {
+                  timestamp: new Date(d.timestamp),
+                  value: value
+              };
+          })
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    } catch (e) {
+        if (e instanceof Error) {
+            console.error(e.message);
+            throw new Error(`Could not connect to the backend API service. Please ensure it's running. Details: ${e.message}`);
+        }
+        throw e;
+    }
+};
+
+// Updated to fetch benchmark from the new API
+export const fetchDefaultBenchmarkData = async (start: string, end: string): Promise<TimeSeriesData[]> => {
+    return fetchVNStockData('VNINDEX', start, end, false);
 };

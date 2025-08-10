@@ -1,17 +1,10 @@
+
+
 export interface RawDataItem {
   navDate: string;
   navPrice?: number;
   diffPercentage?: number;
   navCurrency?: string;
-}
-
-export interface YahooFinanceItem {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
 }
 
 export interface DCResponse {
@@ -28,11 +21,21 @@ export interface FmarketResponse {
   }[];
 }
 
-export type DataSource = 'dc' | 'fmarket' | 'vnstock_stock' | 'vnstock_fund' | 'yfinance';
+export type DataSource = 'vnstock_stock' | 'vnstock_fund' | 'yfinance';
+
+export type AssetItem = {
+    source: DataSource;
+    ticker: string;
+}
 
 export interface TimeSeriesData {
   timestamp: Date;
   value: number;
+}
+
+export interface Asset {
+  name: string;
+  data: TimeSeriesData[];
 }
 
 export interface PerformanceMetrics {
